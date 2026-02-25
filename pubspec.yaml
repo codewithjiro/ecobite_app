@@ -1,5 +1,5 @@
 name: lamon_go
-description: "A new Flutter project."
+description: "EcoBite — Eat clean. Tread lightly."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -40,6 +40,10 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   provider: ^6.1.2
+  flutter_local_notifications: ^18.0.1
+  flutter_svg: ^2.0.10+1
+  geolocator: ^14.0.2
+  flutter_background_service: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -59,9 +63,41 @@ flutter:
   assets:
     - assets/images/
     - assets/icon/
+    - assets/svg/
 
 flutter_launcher_icons:
+  image_path: "assets/icon/logo.png"
+
+  # Android
+  android: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#E8F5E9"
+  adaptive_icon_foreground: "assets/icon/logo.png"
+
+  # iOS
   ios: true
-  android: false
-  image_path: "assets/icon/icon.png"
   remove_alpha_ios: true
+
+  # Web
+  web:
+    generate: true
+    image_path: "assets/icon/logo.png"
+    background_color: "#E8F5E9"
+    theme_color: "#2E7D32"
+
+  # Windows
+  windows:
+    generate: true
+    image_path: "assets/icon/logo.png"
+    icon_size: 48
+
+  # macOS
+  macos:
+    generate: true
+    image_path: "assets/icon/logo.png"
+
+  # Linux
+  linux:
+    generate: true
+    image_path: "assets/icon/logo.png"
+

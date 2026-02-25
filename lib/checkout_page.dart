@@ -8,8 +8,10 @@ import 'package:provider/provider.dart';
 import 'constants.dart';
 import 'map_picker_page.dart';
 import 'models/order_model.dart';
+import 'models/saved_address.dart';
 import 'payment_page.dart';
 import 'providers/cart_provider.dart';
+import 'saved_addresses_page.dart';
 import 'tracking_page.dart';
 
 class CheckoutPage extends StatefulWidget {
@@ -21,28 +23,108 @@ class CheckoutPage extends StatefulWidget {
 
 class _CheckoutPageState extends State<CheckoutPage> {
   LatLng? _deliveryLocation;
+  String? _deliveryLabel;
   bool _isProcessing = false;
+  Timer? _pollTimer; // track so we can cancel on dispose
 
-  Future<void> _pickLocation() async {
-    final result = await Navigator.push<LatLng>(
-      context,
-      CupertinoPageRoute(builder: (_) => const MapPickerPage()),
-    );
-    if (result != null) {
-      setState(() => _deliveryLocation = result);
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-select the default saved address if one exists
+    final saved = _loadSavedAddresses();
+    final defaultAddr = saved.where((a) => a.isDefault).isNotEmpty
+        ? saved.firstWhere((a) => a.isDefault)
+        : (saved.isNotEmpty ? saved.first : null);
+    if (defaultAddr != null) {
+      _deliveryLocation = LatLng(defaultAddr.lat, defaultAddr.lng);
+      _deliveryLabel = defaultAddr.label;
     }
+  }
+
+  List<SavedAddress> _loadSavedAddresses() {
+    final box = Hive.box(kBoxDatabase);
+    final raw = box.get(kSavedAddressesKey) as String?;
+    return SavedAddress.decodeList(raw);
+  }
+
+  // Opens a bottom-sheet picker: saved addresses + "Use new location" option
+  Future<void> _pickDeliveryLocation() async {
+    final saved = _loadSavedAddresses();
+
+    if (saved.isEmpty) {
+      // No saved addresses — go straight to map
+      final result = await Navigator.push<MapPickerResult>(
+        context,
+        CupertinoPageRoute(builder: (_) => const MapPickerPage()),
+      );
+      if (result != null) {
+        setState(() {
+          _deliveryLocation = result.location;
+          _deliveryLabel = result.address ?? '📍 Pinned location';
+        });
+      }
+      return;
+    }
+
+    // Show picker sheet
+    final brightness = CupertinoTheme.of(context).brightness;
+    await showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoTheme(
+        data: CupertinoThemeData(brightness: brightness),
+        child: _AddressPickerSheet(
+          savedAddresses: saved,
+          currentLocation: _deliveryLocation,
+          currentLabel: _deliveryLabel,
+          onSelected: (LatLng loc, String label) {
+            setState(() {
+              _deliveryLocation = loc;
+              _deliveryLabel = label;
+            });
+            Navigator.of(ctx).pop();
+          },
+          onPickNew: () async {
+            Navigator.of(ctx).pop();
+            final result = await Navigator.push<MapPickerResult>(
+              context,
+              CupertinoPageRoute(builder: (_) => const MapPickerPage()),
+            );
+            if (result != null && mounted) {
+              setState(() {
+                _deliveryLocation = result.location;
+                _deliveryLabel = result.address ?? '📍 Pinned location';
+              });
+            }
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _processPayment() async {
     if (_deliveryLocation == null) {
-      _showError('Please pin your delivery location first.');
+      _showError('Please select a delivery location first.');
+      return;
+    }
+
+    final cart = context.read<CartProvider>();
+
+    // Guard: nothing selected to checkout
+    if (cart.selectedItems.isEmpty) {
+      _showError('Please select at least one item to check out.');
       return;
     }
 
     setState(() => _isProcessing = true);
 
     // Show loading dialog
-    showCupertinoDialog(
+    showThemedDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const CupertinoAlertDialog(
@@ -59,8 +141,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
     );
 
-    final cart = context.read<CartProvider>();
-    final totalAmount = cart.total.ceil();
+    final totalAmount = cart.selectedTotal.ceil();
 
     final auth =
         'Basic ${base64Encode(utf8.encode(kXenditKey))}';
@@ -74,10 +155,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
         },
         body: jsonEncode({
           'external_id':
-              'lamonco_${DateTime.now().millisecondsSinceEpoch}',
+              'ecobite_${DateTime.now().millisecondsSinceEpoch}',
           'amount': totalAmount,
-          'description': 'LamonGo Food Order — ${cart.items.length} item(s)',
+          'description': 'EcoBite Order — ${cart.selectedItems.length} item(s)',
         }),
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw Exception('Request timed out. Check your connection.'),
       );
 
       if (mounted) {
@@ -88,6 +172,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (data['invoice_url'] != null) {
         if (mounted) {
+          final invoiceId = data['id'] as String?;
+          if (invoiceId == null) {
+            setState(() => _isProcessing = false);
+            _showError('Invalid payment response. Please try again.');
+            return;
+          }
           Navigator.push(
             context,
             CupertinoPageRoute(
@@ -95,7 +185,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
           );
           _pollPaymentStatus(
-            data['id'] as String,
+            invoiceId,
             auth,
             cart,
             _deliveryLocation!,
@@ -120,7 +210,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     CartProvider cart,
     LatLng location,
   ) {
-    Timer.periodic(const Duration(seconds: 5), (timer) async {
+    _pollTimer?.cancel(); // cancel any existing timer before starting new one
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!mounted) { timer.cancel(); return; }
       try {
         final response = await http.get(
           Uri.parse('$kXenditBaseUrl/$invoiceId'),
@@ -135,24 +227,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
           final box = Hive.box<OrderModel>(kBoxOrders);
           final order = OrderModel(
             itemNames:
-                cart.items.map((e) => e.foodItem.name).toList(),
+                cart.selectedItems.map((e) => e.foodItem.name).toList(),
             itemQuantities:
-                cart.items.map((e) => e.quantity).toList(),
+                cart.selectedItems.map((e) => e.quantity).toList(),
             itemPrices:
-                cart.items.map((e) => e.foodItem.price).toList(),
-            totalAmount: cart.total,
+                cart.selectedItems.map((e) => e.foodItem.price).toList(),
+            totalAmount: cart.selectedTotal,
             status: 'Order Confirmed',
             timestamp: DateTime.now(),
             deliveryLat: location.latitude,
             deliveryLng: location.longitude,
             xenditInvoiceId: invoiceId,
+            riderStep: 0,
+            orderStartTime: DateTime.now(),
           );
           await box.add(order);
 
-          cart.clearCart();
+          cart.clearSelected();
 
           if (mounted) {
-            // Close PaymentPage WebView
             Navigator.of(context, rootNavigator: true)
                 .popUntil((route) => route.isFirst == false
                     ? route.settings.name == '/checkout'
@@ -167,25 +260,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
           }
         } else if (data['status'] == 'EXPIRED') {
           timer.cancel();
-          setState(() => _isProcessing = false);
+          if (mounted) setState(() => _isProcessing = false);
         }
       } catch (e) {
         timer.cancel();
-        setState(() => _isProcessing = false);
+        if (mounted) setState(() => _isProcessing = false);
       }
     });
   }
 
   void _showError(String message) {
-    showCupertinoDialog(
+    showThemedDialog(
       context: context,
-      builder: (_) => CupertinoAlertDialog(
+      builder: (ctx) => CupertinoAlertDialog(
         title: const Text('Error'),
         content: Text(message),
         actions: [
           CupertinoDialogAction(
             child: const Text('OK'),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.of(ctx).pop(),
           ),
         ],
       ),
@@ -221,24 +314,42 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
               child: Column(
                 children: [
-                  ...cart.items.map((item) => Padding(
+                  ...cart.selectedItems.map((item) => Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 10),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Text(
-                                '${item.foodItem.name} x${item.quantity}',
-                                style: TextStyle(
-                                    fontSize: 14, color: textColor),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${item.foodItem.name} x${item.quantity}',
+                                    style: TextStyle(
+                                        fontSize: 14, color: textColor),
+                                  ),
+                                ),
+                                Text(
+                                  '₱${formatPrice(item.subtotal)}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: kPrimary),
+                                ),
+                              ],
+                            ),
+                            if (item.selectedAddons.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                item.selectedAddons
+                                    .map((a) => '+ ${a.name} (₱${formatPrice(a.price)})')
+                                    .join(', '),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: CupertinoColors.systemGrey,
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
-                            ),
-                            Text(
-                              '₱${item.subtotal.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: kPrimary),
-                            ),
+                            ],
                           ],
                         ),
                       )),
@@ -261,7 +372,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 fontSize: 16,
                                 color: textColor)),
                         Text(
-                          '₱${cart.total.toStringAsFixed(2)}',
+                          '₱${formatPrice(cart.selectedTotal, decimals: true)}',
                           style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 18,
@@ -279,7 +390,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             _SectionHeader(
                 title: 'Delivery Location', textColor: textColor),
             GestureDetector(
-              onTap: _pickLocation,
+              onTap: _pickDeliveryLocation,
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -294,32 +405,62 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      _deliveryLocation != null
-                          ? CupertinoIcons.location_fill
-                          : CupertinoIcons.map_pin,
-                      color: _deliveryLocation != null
-                          ? kPrimary
-                          : CupertinoColors.systemGrey,
-                      size: 24,
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _deliveryLocation != null
+                            ? kPrimary.withValues(alpha: 0.12)
+                            : CupertinoColors.systemGrey6,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        _deliveryLocation != null
+                            ? CupertinoIcons.location_fill
+                            : CupertinoIcons.map_pin,
+                        color: _deliveryLocation != null
+                            ? kPrimary
+                            : CupertinoColors.systemGrey,
+                        size: 22,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        _deliveryLocation != null
-                            ? 'Lat: ${_deliveryLocation!.latitude.toStringAsFixed(5)}\nLng: ${_deliveryLocation!.longitude.toStringAsFixed(5)}'
-                            : 'Tap to pin your delivery location',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: _deliveryLocation != null
-                              ? textColor
-                              : CupertinoColors.systemGrey,
-                        ),
-                      ),
+                      child: _deliveryLocation != null
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _deliveryLabel ?? '📍 Pinned location',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${_deliveryLocation!.latitude.toStringAsFixed(5)}, ${_deliveryLocation!.longitude.toStringAsFixed(5)}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: CupertinoColors.systemGrey,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Text(
+                              'Select or pin your delivery location',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: CupertinoColors.systemGrey),
+                            ),
                     ),
                     Icon(
-                      CupertinoIcons.chevron_right,
-                      color: CupertinoColors.systemGrey3,
+                      _deliveryLocation != null
+                          ? CupertinoIcons.pencil
+                          : CupertinoIcons.chevron_right,
+                      color: _deliveryLocation != null
+                          ? kPrimary
+                          : CupertinoColors.systemGrey3,
                       size: 16,
                     ),
                   ],
@@ -374,12 +515,223 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
           color: CupertinoColors.systemGrey,
           letterSpacing: 0.5,
         ),
+      ),
+    );
+  }
+}
+
+// ── Address Picker Sheet ──────────────────────────────────────────────────────
+class _AddressPickerSheet extends StatelessWidget {
+  final List<SavedAddress> savedAddresses;
+  final LatLng? currentLocation;
+  final String? currentLabel;
+  final void Function(LatLng, String) onSelected;
+  final VoidCallback onPickNew;
+
+  const _AddressPickerSheet({
+    required this.savedAddresses,
+    required this.currentLocation,
+    required this.currentLabel,
+    required this.onSelected,
+    required this.onPickNew,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? kDarkCard : CupertinoColors.white;
+    final textColor = isDark ? CupertinoColors.white : const Color(0xFF1B3A1D);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: CupertinoColors.systemGrey4,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Title
+          Text(
+            'Deliver to',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: textColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Choose a saved address or pin a new one.',
+            style: TextStyle(
+                fontSize: 13, color: CupertinoColors.systemGrey),
+          ),
+          const SizedBox(height: 16),
+
+          // Saved address options
+          ...savedAddresses.map((addr) {
+            final isSelected = currentLocation != null &&
+                (currentLocation!.latitude - addr.lat).abs() < 0.00001 &&
+                (currentLocation!.longitude - addr.lng).abs() < 0.00001;
+
+            return GestureDetector(
+              onTap: () =>
+                  onSelected(LatLng(addr.lat, addr.lng), addr.label),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? kPrimary.withValues(alpha: 0.08)
+                      : (isDark
+                          ? const Color(0xFF1F3520)
+                          : const Color(0xFFF6FBF6)),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isSelected
+                        ? kPrimary
+                        : (isDark
+                            ? const Color(0xFF2A3E2A)
+                            : const Color(0xFFDCEEDC)),
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? kPrimary
+                            : kPrimary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        CupertinoIcons.location_fill,
+                        color: isSelected
+                            ? CupertinoColors.white
+                            : kPrimary,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  addr.label,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    color: textColor,
+                                  ),
+                                ),
+                              ),
+                              if (addr.isDefault)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: kPrimary.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Default',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: kPrimary,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            addr.coordString,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: CupertinoColors.systemGrey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(CupertinoIcons.checkmark_circle_fill,
+                          color: kPrimary, size: 20),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+          const SizedBox(height: 4),
+
+          // Use new location
+          GestureDetector(
+            onTap: onPickNew,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark
+                      ? const Color(0xFF2A3E2A)
+                      : const Color(0xFFDCEEDC),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.systemGrey5,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(CupertinoIcons.map_pin_ellipse,
+                        color: CupertinoColors.systemGrey, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Use a new location',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: textColor,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Icon(CupertinoIcons.chevron_right,
+                      color: CupertinoColors.systemGrey3, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

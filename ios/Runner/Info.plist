@@ -3,13 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Lamon Go uses Face ID to securely authenticate your identity.</string>
+	<string>EcoBite uses Face ID to securely authenticate your identity.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>EcoBite needs your location to deliver orders to your address.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>EcoBite sends you a notification when your order has been delivered.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Lamon Go</string>
+	<string>EcoBite</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -17,7 +21,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>lamon_go</string>
+	<string>EcoBite</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

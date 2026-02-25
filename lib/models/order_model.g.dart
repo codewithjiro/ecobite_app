@@ -26,13 +26,15 @@ class OrderModelAdapter extends TypeAdapter<OrderModel> {
       deliveryLat: fields[6] as double,
       deliveryLng: fields[7] as double,
       xenditInvoiceId: fields[8] as String,
+      riderStep: fields[9] as int,
+      orderStartTime: fields[10] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, OrderModel obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.itemNames)
       ..writeByte(1)
@@ -50,7 +52,11 @@ class OrderModelAdapter extends TypeAdapter<OrderModel> {
       ..writeByte(7)
       ..write(obj.deliveryLng)
       ..writeByte(8)
-      ..write(obj.xenditInvoiceId);
+      ..write(obj.xenditInvoiceId)
+      ..writeByte(9)
+      ..write(obj.riderStep)
+      ..writeByte(10)
+      ..write(obj.orderStartTime);
   }
 
   @override

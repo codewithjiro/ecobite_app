@@ -31,6 +31,12 @@ class OrderModel extends HiveObject {
   @HiveField(8)
   final String xenditInvoiceId;
 
+  @HiveField(9)
+  int riderStep;          // how far the rider has travelled
+
+  @HiveField(10)
+  DateTime? orderStartTime; // when the order was placed (for timer resume)
+
   OrderModel({
     required this.itemNames,
     required this.itemQuantities,
@@ -41,6 +47,7 @@ class OrderModel extends HiveObject {
     required this.deliveryLat,
     required this.deliveryLng,
     required this.xenditInvoiceId,
-  });
+    this.riderStep = 0,
+    DateTime? orderStartTime,
+  }) : orderStartTime = orderStartTime ?? DateTime.now();
 }
-
