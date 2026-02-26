@@ -19,7 +19,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   final LocalAuthentication auth = LocalAuthentication();
-  final box = Hive.box('database');
+  final box = Hive.box(kBoxDatabase);
 
   bool hidePassword = true;
   bool isProcessing = false;

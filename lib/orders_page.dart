@@ -5,22 +5,22 @@ import 'models/order_model.dart';
 import 'tracking_page.dart';
 
 // ── Exact stage labels from tracking_page.dart ────────────────────────────────
-const _sPreparing  = 'Preparing your order 👨‍🍳';
-const _sReady      = 'Ready for pickup 📦';
-const _sOnTheWay   = 'Rider is on the way 🛵';
+const _sPreparing   = 'Preparing your order 👨‍🍳';
+const _sReady       = 'Ready for pickup 📦';
+const _sOnTheWay    = 'Rider is on the way 🛵';
 const _sAlmostThere = 'Almost there! 📍';
-const _sDelivered  = 'Delivered! 🎉';
+const _sDelivered   = 'Delivered! 🎉';
 
 bool _statusIsDelivered(String s) => s == _sDelivered || s.contains('Delivered');
 
 /// Maps a saved status string → 0-based pipeline index (0..5)
 int _statusToStep(String s) {
-  if (s == _sDelivered   || s.contains('Delivered'))    return 5;
-  if (s == _sAlmostThere || s.contains('Almost'))       return 4;
-  if (s == _sOnTheWay    || s.contains('on the way'))   return 3;
-  if (s == _sReady       || s.contains('pickup'))       return 2;
-  if (s == _sPreparing   || s.contains('Preparing'))    return 1;
-  return 0; // Confirmed / unknown
+  if (s == _sDelivered   || s.contains('Delivered'))  return 5;
+  if (s == _sAlmostThere || s.contains('Almost'))     return 4;
+  if (s == _sOnTheWay    || s.contains('on the way')) return 3;
+  if (s == _sReady       || s.contains('pickup'))     return 2;
+  if (s == _sPreparing   || s.contains('Preparing'))  return 1;
+  return 0;
 }
 
 class OrdersPage extends StatefulWidget {
@@ -31,12 +31,11 @@ class OrdersPage extends StatefulWidget {
 }
 
 class _OrdersPageState extends State<OrdersPage> {
-  // 0 = All, 1 = Active, 2 = Delivered
   int _selectedSegment = 0;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final isDark  = CupertinoTheme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? kDarkBackground : kBackground;
 
     return CupertinoPageScaffold(
@@ -55,14 +54,17 @@ class _OrdersPageState extends State<OrdersPage> {
           };
 
           return CustomScrollView(
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             slivers: [
-              // ── Nav bar ───────────────────────────────────────────────
+              // ── Nav bar ────────────────────────────────────────────
               CupertinoSliverNavigationBar(
                 largeTitle: const Text(
                   'My Orders',
                   style: TextStyle(
                     color: kPrimary,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: -0.5,
                   ),
                 ),
@@ -81,32 +83,22 @@ class _OrdersPageState extends State<OrdersPage> {
                 border: null,
               ),
 
-              // ── Segmented control ─────────────────────────────────────
+              // ── Segment filter ───────────────────────────��─────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: CupertinoSlidingSegmentedControl<int>(
-                      groupValue: _selectedSegment,
-                      thumbColor: kPrimary,
-                      backgroundColor: isDark
-                          ? kDarkCard
-                          : CupertinoColors.systemGrey5,
-                      children: {
-                        0: _segLabel('All',       all.length,       _selectedSegment == 0, isDark),
-                        1: _segLabel('Active',    active.length,    _selectedSegment == 1, isDark),
-                        2: _segLabel('Delivered', delivered.length, _selectedSegment == 2, isDark),
-                      },
-                      onValueChanged: (v) {
-                        if (v != null) setState(() => _selectedSegment = v);
-                      },
-                    ),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: _PremiumSegmentedControl(
+                    selected: _selectedSegment,
+                    isDark: isDark,
+                    allCount: all.length,
+                    activeCount: active.length,
+                    deliveredCount: delivered.length,
+                    onChanged: (v) => setState(() => _selectedSegment = v),
                   ),
                 ),
               ),
 
-              // ── Order list / empty state ──────────────────────────────
+              // ── Content ────────────────────────────────────────────
               if (shown.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -115,7 +107,8 @@ class _OrdersPageState extends State<OrdersPage> {
                     isDark: isDark,
                   ),
                 )
-              else ..._buildGroupedSliver(shown, isDark),
+              else
+                ..._buildGroupedSliver(shown, isDark),
             ],
           );
         },
@@ -123,62 +116,11 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  Widget _segLabel(String label, int count, bool selected, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected
-                  ? CupertinoColors.white
-                  : isDark
-                      ? CupertinoColors.white.withValues(alpha: 0.65)
-                      : CupertinoColors.black.withValues(alpha: 0.6),
-              letterSpacing: selected ? 0.2 : 0,
-            ),
-          ),
-          if (count > 0) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: selected
-                    ? CupertinoColors.white.withValues(alpha: 0.25)
-                    : isDark
-                        ? kAccent.withValues(alpha: 0.2)
-                        : kPrimary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: selected
-                      ? CupertinoColors.white
-                      : isDark
-                          ? kAccent
-                          : kPrimary,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-  // ── Groups orders by day, injects date-separator slivers ────────────────
+  // ── Groups orders by day, injects date-separator slivers ──────────────────
   List<Widget> _buildGroupedSliver(List<OrderModel> orders, bool isDark) {
     final now   = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    // Build a flat list of (separator | card) widgets, then wrap in slivers
     final List<Widget> flat = [];
     String? lastLabel;
 
@@ -193,7 +135,7 @@ class _OrdersPageState extends State<OrdersPage> {
               : _fullDate(d);
 
       if (label != lastLabel) {
-        flat.add(_DateSeparator(label: label, isDark: isDark));
+        flat.add(_SectionDateHeader(label: label, isDark: isDark));
         lastLabel = label;
       }
 
@@ -209,7 +151,7 @@ class _OrdersPageState extends State<OrdersPage> {
 
     return [
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
         sliver: SliverList(
           delegate: SliverChildBuilderDelegate(
             (_, i) => flat[i],
@@ -223,105 +165,219 @@ class _OrdersPageState extends State<OrdersPage> {
   String _fullDate(DateTime dt) {
     const months = [
       'Jan','Feb','Mar','Apr','May','Jun',
-      'Jul','Aug','Sep','Oct','Nov','Dec'
+      'Jul','Aug','Sep','Oct','Nov','Dec',
     ];
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    return '${weekdays[dt.weekday - 1]}, ${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
-} // end _OrdersPageState
+}
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Premium Segmented Control
+// ═══════════════════════════════════════════════════════════════════════════════
+class _PremiumSegmentedControl extends StatelessWidget {
+  final int selected;
+  final bool isDark;
+  final int allCount;
+  final int activeCount;
+  final int deliveredCount;
+  final ValueChanged<int> onChanged;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Date Separator
-// ─────────────────────────────────────────────────────────────────────────────
-class _DateSeparator extends StatelessWidget {
-  final String label;
-  final bool   isDark;
-  const _DateSeparator({required this.label, required this.isDark});
+  const _PremiumSegmentedControl({
+    required this.selected,
+    required this.isDark,
+    required this.allCount,
+    required this.activeCount,
+    required this.deliveredCount,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 14),
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCard : CupertinoColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(4),
       child: Row(
         children: [
-          Expanded(
-            child: Container(
-              height: 1.5,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    isDark
-                        ? CupertinoColors.white.withValues(alpha: 0.0)
-                        : CupertinoColors.black.withValues(alpha: 0.0),
-                    isDark
-                        ? CupertinoColors.white.withValues(alpha: 0.08)
-                        : CupertinoColors.black.withValues(alpha: 0.08),
-                  ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                borderRadius: BorderRadius.circular(1),
-              ),
-            ),
+          _buildTab(0, 'All', allCount, CupertinoIcons.square_grid_2x2_fill),
+          const SizedBox(width: 4),
+          _buildTab(1, 'Active', activeCount, CupertinoIcons.flame_fill),
+          const SizedBox(width: 4),
+          _buildTab(2, 'Delivered', deliveredCount, CupertinoIcons.checkmark_seal_fill),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTab(int index, String label, int count, IconData icon) {
+    final isSelected = selected == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onChanged(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? kPrimary
+                : CupertinoColors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: kPrimary.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
           ),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? kDarkCard
-                  : kPrimaryLight.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark
-                    ? kAccent.withValues(alpha: 0.15)
-                    : kPrimary.withValues(alpha: 0.12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected
+                    ? CupertinoColors.white
+                    : isDark
+                        ? CupertinoColors.systemGrey
+                        : CupertinoColors.systemGrey2,
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  label == 'Today'
-                      ? CupertinoIcons.calendar_today
-                      : label == 'Yesterday'
-                          ? CupertinoIcons.clock
-                          : CupertinoIcons.calendar,
-                  size: 12,
-                  color: isDark ? kAccent : kPrimary,
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? CupertinoColors.white
+                      : isDark
+                          ? CupertinoColors.white.withValues(alpha: 0.6)
+                          : CupertinoColors.black.withValues(alpha: 0.55),
+                  letterSpacing: isSelected ? 0.2 : 0,
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? CupertinoColors.white.withValues(alpha: 0.8)
-                        : kPrimary,
-                    letterSpacing: 0.3,
+              ),
+              if (count > 0) ...[
+                const SizedBox(height: 3),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? CupertinoColors.white.withValues(alpha: 0.2)
+                        : isDark
+                            ? kAccent.withValues(alpha: 0.15)
+                            : kPrimary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected
+                          ? CupertinoColors.white
+                          : isDark
+                              ? kAccent
+                              : kPrimary,
+                    ),
                   ),
                 ),
+              ] else ...[
+                // Spacer to keep height consistent when badge is absent
+                const SizedBox(height: 18),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Section Date Header — clean iOS-style section title
+// ═══════════════════════════════════════════════════════════════════════════════
+class _SectionDateHeader extends StatelessWidget {
+  final String label;
+  final bool isDark;
+  const _SectionDateHeader({required this.label, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final isToday = label == 'Today';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Row(
+        children: [
+          // Icon indicator
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: isToday
+                  ? kPrimary.withValues(alpha: 0.12)
+                  : isDark
+                      ? CupertinoColors.white.withValues(alpha: 0.06)
+                      : CupertinoColors.black.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              isToday
+                  ? CupertinoIcons.calendar_today
+                  : label == 'Yesterday'
+                      ? CupertinoIcons.clock
+                      : CupertinoIcons.calendar,
+              size: 14,
+              color: isToday
+                  ? kPrimary
+                  : isDark
+                      ? CupertinoColors.systemGrey
+                      : CupertinoColors.systemGrey2,
             ),
           ),
+          const SizedBox(width: 10),
+          // Label
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              color: isToday
+                  ? kPrimary
+                  : isDark
+                      ? CupertinoColors.white.withValues(alpha: 0.5)
+                      : CupertinoColors.black.withValues(alpha: 0.4),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Divider line
           Expanded(
             child: Container(
-              height: 1.5,
+              height: 1,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    isDark
-                        ? CupertinoColors.white.withValues(alpha: 0.08)
-                        : CupertinoColors.black.withValues(alpha: 0.08),
-                    isDark
-                        ? CupertinoColors.white.withValues(alpha: 0.0)
-                        : CupertinoColors.black.withValues(alpha: 0.0),
+                    (isToday ? kPrimary : CupertinoColors.systemGrey4)
+                        .withValues(alpha: 0.3),
+                    (isToday ? kPrimary : CupertinoColors.systemGrey4)
+                        .withValues(alpha: 0.0),
                   ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
                 ),
-                borderRadius: BorderRadius.circular(1),
               ),
             ),
           ),
@@ -331,9 +387,9 @@ class _DateSeparator extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Order Card
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Order Card — premium glassmorphic feel
+// ═══════════════════════════════════════════════════════════════════════════════
 class _OrderCard extends StatelessWidget {
   final OrderModel order;
   final bool isDark;
@@ -347,85 +403,110 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardColor  = isDark ? kDarkCard : CupertinoColors.white;
-    final textColor  = isDark ? CupertinoColors.white : CupertinoColors.black;
-    final subtleColor = isDark ? CupertinoColors.systemGrey : CupertinoColors.systemGrey2;
+    final cardColor   = isDark ? kDarkCard : CupertinoColors.white;
+    final textColor   = isDark ? CupertinoColors.white : const Color(0xFF1A1A1A);
+    final subtleColor = isDark ? const Color(0xFF8BAE8B) : CupertinoColors.systemGrey;
     final isDelivered = _statusIsDelivered(order.status);
     final stepIndex   = _statusToStep(order.status);
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: cardColor,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: isDelivered
-                  ? CupertinoColors.black.withValues(alpha: 0.04)
-                  : kPrimary.withValues(alpha: 0.09),
-              blurRadius: 18,
-              spreadRadius: 0,
-              offset: const Offset(0, 5),
+                  ? CupertinoColors.black.withValues(alpha: isDark ? 0.12 : 0.04)
+                  : kPrimary.withValues(alpha: isDark ? 0.12 : 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
             ),
           ],
-          border: isDelivered
-              ? Border.all(
-                  color: isDark
-                      ? CupertinoColors.white.withValues(alpha: 0.06)
-                      : CupertinoColors.black.withValues(alpha: 0.05),
-                )
-              : Border.all(
-                  color: kPrimary.withValues(alpha: 0.14), width: 1),
+          border: Border.all(
+            color: isDelivered
+                ? (isDark
+                    ? CupertinoColors.white.withValues(alpha: 0.06)
+                    : CupertinoColors.black.withValues(alpha: 0.04))
+                : kPrimary.withValues(alpha: 0.12),
+            width: 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header ───────────────────────────────────────────────
+            // ── Header ─────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 14, 0),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Status icon container
                   Container(
-                    padding: const EdgeInsets.all(9),
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
-                      color: isDelivered
-                          ? CupertinoColors.systemGreen.withValues(alpha: 0.1)
-                          : kPrimaryLight,
-                      borderRadius: BorderRadius.circular(14),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: isDelivered
+                            ? [
+                                CupertinoColors.systemGreen.withValues(alpha: 0.15),
+                                CupertinoColors.systemGreen.withValues(alpha: 0.06),
+                              ]
+                            : [
+                                kPrimary.withValues(alpha: 0.15),
+                                kPrimary.withValues(alpha: 0.06),
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(13),
                     ),
                     child: Icon(
                       isDelivered
                           ? CupertinoIcons.checkmark_seal_fill
                           : CupertinoIcons.bag_fill,
-                      size: 19,
+                      size: 20,
                       color: isDelivered
                           ? CupertinoColors.systemGreen
                           : kPrimary,
                     ),
                   ),
-                  const SizedBox(width: 11),
+                  const SizedBox(width: 12),
+                  // Info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _formatDate(order.timestamp),
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            color: CupertinoColors.systemGrey,
+                          _itemsSummary(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                            letterSpacing: -0.2,
                           ),
                         ),
                         const SizedBox(height: 3),
-                        Text(
-                          '${order.itemNames.length} item${order.itemNames.length == 1 ? '' : 's'}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: textColor,
-                          ),
+                        Row(
+                          children: [
+                            Icon(
+                              CupertinoIcons.time,
+                              size: 11,
+                              color: subtleColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatDate(order.timestamp),
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: subtleColor,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -436,63 +517,88 @@ class _OrderCard extends StatelessWidget {
               ),
             ),
 
-            // ── Separator ─────────────────────────────────────────────
+            // ── Thin divider ─────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.fromLTRB(70, 12, 16, 0),
               child: Container(
-                height: 1,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? CupertinoColors.white.withValues(alpha: 0.07)
-                      : CupertinoColors.black.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(1),
-                ),
+                height: 0.5,
+                color: isDark
+                    ? CupertinoColors.white.withValues(alpha: 0.07)
+                    : CupertinoColors.black.withValues(alpha: 0.06),
               ),
             ),
 
-            // ── Item list (max 3 shown) ────────────────────────────────
+            // ── Item list (max 3 shown) ─────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(
                 children: List.generate(
                   order.itemNames.length > 3 ? 3 : order.itemNames.length,
                   (i) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.only(bottom: 7),
                     child: Row(
                       children: [
+                        // Numbered bullet
                         Container(
-                          width: 5,
-                          height: 5,
+                          width: 20,
+                          height: 20,
                           decoration: BoxDecoration(
-                            color: kPrimary.withValues(alpha: 0.45),
-                            shape: BoxShape.circle,
+                            color: isDark
+                                ? CupertinoColors.white.withValues(alpha: 0.06)
+                                : kPrimaryLight,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? kAccent : kPrimary,
+                              ),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 9),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             order.itemNames[i],
-                            style: TextStyle(fontSize: 13, color: textColor),
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: textColor,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
+                        // Quantity pill
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2),
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: isDark
-                                ? CupertinoColors.white.withValues(alpha: 0.08)
-                                : kBackground,
+                                ? CupertinoColors.white.withValues(alpha: 0.07)
+                                : const Color(0xFFF5F5F5),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            'x${order.itemQuantities[i]}',
+                            '×${order.itemQuantities[i]}',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w700,
                               color: subtleColor,
                             ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Price
+                        Text(
+                          '₱${formatPrice(order.itemPrices[i] * order.itemQuantities[i])}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? kAccent : kPrimary,
                           ),
                         ),
                       ],
@@ -504,76 +610,103 @@ class _OrderCard extends StatelessWidget {
 
             if (order.itemNames.length > 3)
               Padding(
-                padding: const EdgeInsets.only(left: 30, bottom: 6),
+                padding: const EdgeInsets.only(left: 46, bottom: 4),
                 child: Text(
-                  '+${order.itemNames.length - 3} more items',
-                  style: const TextStyle(
+                  '+${order.itemNames.length - 3} more item${order.itemNames.length - 3 == 1 ? '' : 's'}',
+                  style: TextStyle(
                     fontSize: 12,
-                    color: CupertinoColors.systemGrey,
+                    fontWeight: FontWeight.w500,
+                    color: isDark
+                        ? CupertinoColors.systemGrey
+                        : CupertinoColors.systemGrey2,
                   ),
                 ),
               ),
 
-            // ── Progress tracker (active orders only) ─────────────────
+            // ── Progress tracker (active orders only) ────────────────
             if (!isDelivered) ...[
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Container(
-                  height: 1,
+                  height: 0.5,
                   color: isDark
                       ? CupertinoColors.white.withValues(alpha: 0.07)
                       : CupertinoColors.black.withValues(alpha: 0.05),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                child: _OrderProgress(stepIndex: stepIndex),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _OrderProgress(stepIndex: stepIndex, isDark: isDark),
               ),
             ],
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
 
-            // ── Footer ────────────────────────────────────────────────
+            // ── Footer ─────────────────────────────────────────────
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: isDark
-                    ? CupertinoColors.white.withValues(alpha: 0.04)
-                    : kBackground,
+                    ? CupertinoColors.white.withValues(alpha: 0.03)
+                    : kBackground.withValues(alpha: 0.7),
                 borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(22),
-                  bottomRight: Radius.circular(22),
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Action link
                   Row(
                     children: [
-                      Icon(
-                        CupertinoIcons.arrow_right_circle_fill,
-                        size: 14,
-                        color: kPrimary.withValues(alpha: 0.55),
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: kPrimary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.arrow_right,
+                          size: 12,
+                          color: kPrimary,
+                        ),
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 8),
                       Text(
                         isDelivered ? 'View details' : 'Track order',
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: kPrimary,
                         ),
                       ),
                     ],
                   ),
-                  Text(
-                    '₱${formatPrice(order.totalAmount, decimals: true)}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: kPrimary,
-                      letterSpacing: -0.4,
-                    ),
+                  // Price total
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Total',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: subtleColor,
+                        ),
+                      ),
+                      Text(
+                        '₱${formatPrice(order.totalAmount, decimals: true)}',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: kPrimary,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -584,39 +717,55 @@ class _OrderCard extends StatelessWidget {
     );
   }
 
+  String _itemsSummary() {
+    final count = order.itemNames.length;
+    if (count == 1) return order.itemNames.first;
+    return '${order.itemNames.first} + ${count - 1} more';
+  }
+
   String _formatDate(DateTime dt) {
     const months = [
       'Jan','Feb','Mar','Apr','May','Jun',
-      'Jul','Aug','Sep','Oct','Nov','Dec'
+      'Jul','Aug','Sep','Oct','Nov','Dec',
     ];
     final h   = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final ap  = dt.hour >= 12 ? 'PM' : 'AM';
     final min = dt.minute.toString().padLeft(2, '0');
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}  $h:$min $ap';
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year} · $h:$min $ap';
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Progress bar — 4 visible milestones from the 6-stage pipeline
-//   Confirmed(0) → Preparing(1) → On the way(3) → Arriving(4)
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Progress bar — 4 visible milestones
+// ═══════════════════════════════════════════════════════════════════════════════
 class _OrderProgress extends StatelessWidget {
-  /// Raw pipeline index 0..5
   final int stepIndex;
-  const _OrderProgress({required this.stepIndex});
+  final bool isDark;
+  const _OrderProgress({required this.stepIndex, required this.isDark});
 
-  // Map pipeline index → compact 0-3 progress step
   int get _compact {
-    if (stepIndex >= 4) return 3; // Almost there
-    if (stepIndex >= 3) return 2; // On the way
-    if (stepIndex >= 1) return 1; // Preparing
-    return 0;                     // Confirmed
+    if (stepIndex >= 4) return 3;
+    if (stepIndex >= 3) return 2;
+    if (stepIndex >= 1) return 1;
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
     const labels = ['Confirmed', 'Preparing', 'On the way', 'Arriving'];
-    final cur    = _compact;
+    const icons  = [
+      CupertinoIcons.checkmark_circle_fill,
+      CupertinoIcons.flame_fill,
+      CupertinoIcons.car_fill,
+      CupertinoIcons.location_fill,
+    ];
+    const colors = [
+      kPrimary,
+      Color(0xFFF57C00),
+      Color(0xFFF9A825),
+      Color(0xFF7B1FA2),
+    ];
+    final cur = _compact;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -625,12 +774,16 @@ class _OrderProgress extends StatelessWidget {
           final passed = (i ~/ 2) < cur;
           return Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.only(top: 11),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                height: 3,
+                duration: const Duration(milliseconds: 400),
+                height: 2.5,
                 decoration: BoxDecoration(
-                  color: passed ? kPrimary : CupertinoColors.systemGrey4,
+                  color: passed
+                      ? colors[i ~/ 2]
+                      : isDark
+                          ? CupertinoColors.white.withValues(alpha: 0.08)
+                          : CupertinoColors.systemGrey5,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -641,41 +794,45 @@ class _OrderProgress extends StatelessWidget {
         final si       = i ~/ 2;
         final isDone   = si < cur;
         final isActive = si == cur;
+        final stageColor = colors[si];
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: 22,
-              height: 22,
+              duration: const Duration(milliseconds: 350),
+              width: isActive ? 24 : 22,
+              height: isActive ? 24 : 22,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isDone
-                    ? kPrimary
+                    ? stageColor
                     : isActive
-                        ? kPrimaryLight
-                        : CupertinoColors.systemGrey5,
+                        ? stageColor.withValues(alpha: 0.15)
+                        : isDark
+                            ? CupertinoColors.white.withValues(alpha: 0.06)
+                            : CupertinoColors.systemGrey6,
                 border: Border.all(
                   color: isActive
-                      ? kPrimary
+                      ? stageColor
                       : CupertinoColors.transparent,
                   width: 2,
                 ),
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: stageColor.withValues(alpha: 0.3),
+                          blurRadius: 6,
+                        ),
+                      ]
+                    : [],
               ),
               child: Center(
                 child: isDone
                     ? const Icon(CupertinoIcons.checkmark,
                         size: 11, color: CupertinoColors.white)
                     : isActive
-                        ? Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: kPrimary,
-                            ),
-                          )
+                        ? Icon(icons[si], size: 10, color: stageColor)
                         : null,
               ),
             ),
@@ -684,9 +841,12 @@ class _OrderProgress extends StatelessWidget {
               labels[si],
               style: TextStyle(
                 fontSize: 9,
-                fontWeight:
-                    isActive ? FontWeight.w700 : FontWeight.w400,
-                color: isActive ? kPrimary : CupertinoColors.systemGrey,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                color: isActive
+                    ? stageColor
+                    : isDone
+                        ? (isDark ? CupertinoColors.white.withValues(alpha: 0.7) : CupertinoColors.black.withValues(alpha: 0.5))
+                        : CupertinoColors.systemGrey,
               ),
             ),
           ],
@@ -696,47 +856,40 @@ class _OrderProgress extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Status Badge — driven by stepIndex for consistent colour/icon
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Status Badge
+// ═══════════════════════════════════════════════════════════════════════════════
 class _StatusBadge extends StatelessWidget {
   final int    stepIndex;
   final String status;
   const _StatusBadge({required this.stepIndex, required this.status});
 
-  // Short display label
-  String get _label {
-    return switch (stepIndex) {
-      5 => 'Delivered',
-      4 => 'Almost there',
-      3 => 'On the way',
-      2 => 'Ready',
-      1 => 'Preparing',
-      _ => 'Confirmed',
-    };
-  }
+  String get _label => switch (stepIndex) {
+    5 => 'Delivered',
+    4 => 'Almost there',
+    3 => 'On the way',
+    2 => 'Ready',
+    1 => 'Preparing',
+    _ => 'Confirmed',
+  };
 
-  Color get _color {
-    return switch (stepIndex) {
-      5 => CupertinoColors.systemGreen,
-      4 => CupertinoColors.systemPurple,
-      3 => CupertinoColors.systemOrange,
-      2 => CupertinoColors.systemBlue,
-      1 => const Color(0xFFF57C00),
-      _ => kPrimary,
-    };
-  }
+  Color get _color => switch (stepIndex) {
+    5 => CupertinoColors.systemGreen,
+    4 => CupertinoColors.systemPurple,
+    3 => CupertinoColors.systemOrange,
+    2 => CupertinoColors.systemBlue,
+    1 => const Color(0xFFF57C00),
+    _ => kPrimary,
+  };
 
-  IconData get _icon {
-    return switch (stepIndex) {
-      5 => CupertinoIcons.checkmark_seal_fill,
-      4 => CupertinoIcons.location_fill,
-      3 => CupertinoIcons.arrow_right_circle_fill,
-      2 => CupertinoIcons.bag_fill,
-      1 => CupertinoIcons.flame_fill,
-      _ => CupertinoIcons.checkmark_circle_fill,
-    };
-  }
+  IconData get _icon => switch (stepIndex) {
+    5 => CupertinoIcons.checkmark_seal_fill,
+    4 => CupertinoIcons.location_fill,
+    3 => CupertinoIcons.arrow_right_circle_fill,
+    2 => CupertinoIcons.bag_fill,
+    1 => CupertinoIcons.flame_fill,
+    _ => CupertinoIcons.checkmark_circle_fill,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -745,7 +898,7 @@ class _StatusBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: _color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _color.withValues(alpha: 0.28), width: 1),
+        border: Border.all(color: _color.withValues(alpha: 0.25), width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -766,20 +919,21 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Empty state
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Empty state
+// ═══════════════════════════════════════════════════════════════════════════════
 class _EmptyState extends StatelessWidget {
-  /// 0 = All, 1 = Active, 2 = Delivered
   final int  segment;
   final bool isDark;
   const _EmptyState({required this.segment, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
-    final icon = segment == 2
-        ? CupertinoIcons.checkmark_seal
-        : CupertinoIcons.bag;
+    final icon = switch (segment) {
+      2 => CupertinoIcons.checkmark_seal,
+      1 => CupertinoIcons.flame,
+      _ => CupertinoIcons.bag,
+    };
 
     final title = switch (segment) {
       2 => 'No delivered orders yet',
@@ -799,36 +953,59 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Layered icon
             Container(
-              padding: const EdgeInsets.all(26),
+              padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: isDark ? kDarkCard : kPrimaryLight,
+                color: isDark
+                    ? kDarkCard
+                    : kPrimaryLight.withValues(alpha: 0.6),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: kPrimary.withValues(alpha: 0.08),
+                    blurRadius: 24,
+                    spreadRadius: 4,
+                  ),
+                ],
               ),
-              child: Icon(
-                icon,
-                size: 50,
-                color: kPrimary.withValues(alpha: 0.45),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? kPrimary.withValues(alpha: 0.12)
+                      : kPrimaryLight,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  size: 36,
+                  color: kPrimary.withValues(alpha: 0.5),
+                ),
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 28),
             Text(
               title,
               style: TextStyle(
-                fontSize: 17,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: isDark
                     ? CupertinoColors.white
-                    : CupertinoColors.black,
+                    : const Color(0xFF1A1A1A),
+                letterSpacing: -0.3,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 8),
             Text(
               sub,
-              style: const TextStyle(
-                fontSize: 13,
-                color: CupertinoColors.systemGrey,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark
+                    ? CupertinoColors.systemGrey
+                    : CupertinoColors.systemGrey2,
+                height: 1.4,
               ),
               textAlign: TextAlign.center,
             ),

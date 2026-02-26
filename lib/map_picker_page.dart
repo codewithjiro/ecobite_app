@@ -168,6 +168,7 @@ class _MapPickerPageState extends State<MapPickerPage> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        if (mounted) setState(() => _locating = false);
         _showGpsError('Location services are disabled.');
         return;
       }
@@ -175,11 +176,13 @@ class _MapPickerPageState extends State<MapPickerPage> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
+          if (mounted) setState(() => _locating = false);
           _showGpsError('Location permission denied.');
           return;
         }
       }
       if (permission == LocationPermission.deniedForever) {
+        if (mounted) setState(() => _locating = false);
         _showGpsError('Location permission permanently denied. Enable it in Settings.');
         return;
       }
@@ -198,7 +201,7 @@ class _MapPickerPageState extends State<MapPickerPage> {
 
   void _showGpsError(String msg) {
     if (!mounted) return;
-    showCupertinoDialog(
+    showThemedDialog(
       context: context,
       builder: (dialogCtx) => CupertinoAlertDialog(
         title: const Text('Location Error'),
@@ -330,7 +333,7 @@ class _MapPickerPageState extends State<MapPickerPage> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Text(
-                              'Our Store',
+                              'Eco Bite',
                               style: TextStyle(
                                 color: CupertinoColors.white,
                                 fontSize: 10,

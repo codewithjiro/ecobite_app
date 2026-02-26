@@ -28,13 +28,14 @@ class OrderModelAdapter extends TypeAdapter<OrderModel> {
       xenditInvoiceId: fields[8] as String,
       riderStep: fields[9] as int,
       orderStartTime: fields[10] as DateTime?,
+      itemAddons: (fields[11] as List?)?.cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, OrderModel obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.itemNames)
       ..writeByte(1)
@@ -56,7 +57,9 @@ class OrderModelAdapter extends TypeAdapter<OrderModel> {
       ..writeByte(9)
       ..write(obj.riderStep)
       ..writeByte(10)
-      ..write(obj.orderStartTime);
+      ..write(obj.orderStartTime)
+      ..writeByte(11)
+      ..write(obj.itemAddons);
   }
 
   @override

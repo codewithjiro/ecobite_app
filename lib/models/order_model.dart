@@ -37,6 +37,11 @@ class OrderModel extends HiveObject {
   @HiveField(10)
   DateTime? orderStartTime; // when the order was placed (for timer resume)
 
+  /// Serialized addons per item: each entry is "AddonName:Price,AddonName:Price"
+  /// Empty string means no addons for that item. Backwards-compatible (nullable).
+  @HiveField(11)
+  final List<String> itemAddons;
+
   OrderModel({
     required this.itemNames,
     required this.itemQuantities,
@@ -49,5 +54,7 @@ class OrderModel extends HiveObject {
     required this.xenditInvoiceId,
     this.riderStep = 0,
     DateTime? orderStartTime,
-  }) : orderStartTime = orderStartTime ?? DateTime.now();
+    List<String>? itemAddons,
+  })  : orderStartTime = orderStartTime ?? DateTime.now(),
+        itemAddons = itemAddons ?? List.filled(0, '');
 }

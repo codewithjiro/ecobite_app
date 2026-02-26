@@ -85,6 +85,8 @@ class _TrackingPageState extends State<TrackingPage> {
   final List<Timer> _timers = [];
   final MapController _mapController = MapController();
 
+  bool _summaryExpanded = true;
+
   _DeliveryStage get _currentStage => _stages[_stageIndex];
   bool get _isDelivered => _stageIndex == 5;
 
@@ -465,73 +467,12 @@ class _TrackingPageState extends State<TrackingPage> {
 
             const SizedBox(height: 12),
 
-            // ── Order summary ──────────────────────────────────
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Order Summary',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: subColor)),
-                  const SizedBox(height: 8),
-                  ...List.generate(
-                    widget.order.itemNames.length,
-                    (i) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${widget.order.itemNames[i]} ×${widget.order.itemQuantities[i]}',
-                              style: TextStyle(fontSize: 13, color: textColor),
-                            ),
-                          ),
-                          Text(
-                            '₱${formatPrice(widget.order.itemPrices[i] * widget.order.itemQuantities[i])}',
-                            style: const TextStyle(
-                                fontSize: 13,
-                                color: kPrimary,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                      height: 1,
-                      color: isDark
-                          ? const Color(0xFF2A3E2A)
-                          : const Color(0xFFE8F5E9)),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Total',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: textColor)),
-                      Text(
-                        '₱${formatPrice(widget.order.totalAmount, decimals: true)}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                            color: kPrimary),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            // ── Order summary (collapsible) ──────────────────
+            _CollapsibleOrderSummary(
+              order: widget.order,
+              isDark: isDark,
+              isExpanded: _summaryExpanded,
+              onToggle: () => setState(() => _summaryExpanded = !_summaryExpanded),
             ),
 
             // ── Back to Home ───────────────────────────────────
@@ -796,6 +737,333 @@ class _DeliveryTimeline extends StatelessWidget {
   }
 }
 
+// ── Collapsible Order Summary ─────────────────────────────────────────────────
+class _CollapsibleOrderSummary extends StatelessWidget {
+  final OrderModel order;
+  final bool isDark;
+  final bool isExpanded;
+  final VoidCallback onToggle;
 
+  const _CollapsibleOrderSummary({
+    required this.order,
+    required this.isDark,
+    required this.isExpanded,
+    required this.onToggle,
+  });
 
+  /// Parse "AddonName:Price,AddonName:Price" → list of (name, price)
+  List<(String, double)> _parseAddons(String raw) {
+    if (raw.isEmpty) return [];
+    return raw.split(',').map((entry) {
+      final parts = entry.split(':');
+      final name = parts[0];
+      final price = parts.length > 1 ? double.tryParse(parts[1]) ?? 0.0 : 0.0;
+      return (name, price);
+    }).toList();
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final cardColor = isDark ? kDarkCard : CupertinoColors.white;
+    final textColor = isDark ? CupertinoColors.white : const Color(0xFF1A1A1A);
+    final subColor  = isDark ? const Color(0xFF8BAE8B) : CupertinoColors.systemGrey;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.12 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // ── Header (always visible, tappable) ────────────────────
+          GestureDetector(
+            onTap: onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: kPrimary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(CupertinoIcons.doc_text_fill,
+                        size: 14, color: kPrimary),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Order Summary',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: textColor,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const Spacer(),
+                  // Total badge
+                  Text(
+                    '₱${formatPrice(order.totalAmount, decimals: true)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: kPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.0 : -0.25,
+                    duration: const Duration(milliseconds: 250),
+                    child: Icon(
+                      CupertinoIcons.chevron_down,
+                      size: 14,
+                      color: isDark
+                          ? CupertinoColors.systemGrey
+                          : CupertinoColors.systemGrey2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Body (animated expand/collapse) ──────────────────────
+          AnimatedCrossFade(
+            firstChild: _buildBody(textColor, subColor),
+            secondChild: const SizedBox.shrink(),
+            crossFadeState: isExpanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            duration: const Duration(milliseconds: 250),
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(Color textColor, Color subColor) {
+    return Column(
+      children: [
+        // Divider
+        Container(
+          height: 0.5,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          color: isDark
+              ? CupertinoColors.white.withValues(alpha: 0.07)
+              : CupertinoColors.black.withValues(alpha: 0.05),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+          child: Column(
+            children: [
+              // ── Item rows ──────────────────────────────────────
+              ...List.generate(order.itemNames.length, (i) {
+                final addonsRaw = (i < order.itemAddons.length)
+                    ? order.itemAddons[i]
+                    : '';
+                final addons = _parseAddons(addonsRaw);
+                final basePrice = order.itemPrices[i];
+                final qty = order.itemQuantities[i];
+                final addonsTotal =
+                    addons.fold(0.0, (sum, a) => sum + a.$2);
+                final lineTotal = (basePrice + addonsTotal) * qty;
+
+                return Padding(
+                  padding: EdgeInsets.only(bottom: i < order.itemNames.length - 1 ? 10 : 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Item name + qty + price
+                      Row(
+                        children: [
+                          // Number badge
+                          Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? CupertinoColors.white.withValues(alpha: 0.06)
+                                  : kPrimaryLight,
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${i + 1}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? kAccent : kPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  order.itemNames[i],
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: textColor,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (addons.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      '₱${formatPrice(basePrice, decimals: true)} each',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: subColor,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // Qty pill
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? CupertinoColors.white.withValues(alpha: 0.06)
+                                  : const Color(0xFFF5F5F5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '×$qty',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: subColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '₱${formatPrice(lineTotal, decimals: true)}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? kAccent : kPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // ── Addons (if any) ───────────────────────────
+                      if (addons.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 32, top: 5),
+                          child: Column(
+                            children: addons.map((addon) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 3),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      CupertinoIcons.plus_circle_fill,
+                                      size: 11,
+                                      color: isDark
+                                          ? kAccent.withValues(alpha: 0.6)
+                                          : kPrimary.withValues(alpha: 0.5),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        addon.$1,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: subColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '+₱${formatPrice(addon.$2, decimals: true)}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark
+                                            ? kAccent.withValues(alpha: 0.7)
+                                            : kPrimary.withValues(alpha: 0.65),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }),
+
+              // ── Divider ────────────────────────────────────────
+              const SizedBox(height: 4),
+              Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      (isDark ? CupertinoColors.white : CupertinoColors.black)
+                          .withValues(alpha: 0.0),
+                      (isDark ? CupertinoColors.white : CupertinoColors.black)
+                          .withValues(alpha: 0.07),
+                      (isDark ? CupertinoColors.white : CupertinoColors.black)
+                          .withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // ── Total row ──────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Total',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: textColor,
+                    ),
+                  ),
+                  Text(
+                    '₱${formatPrice(order.totalAmount, decimals: true)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      color: kPrimary,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

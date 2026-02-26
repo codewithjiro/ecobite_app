@@ -13,7 +13,7 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  final box = Hive.box('database');
+  final box = Hive.box(kBoxDatabase);
   bool hidePassword = true;
   final TextEditingController _username = TextEditingController();
   final TextEditingController _password = TextEditingController();

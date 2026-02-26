@@ -55,7 +55,7 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _handleStartup() async {
     await Future.delayed(const Duration(seconds: 3));
-    final box = Hive.box('database');
+    final box = Hive.box(kBoxDatabase);
     if (mounted) {
       setState(() {
         _hasUser = box.get('username') != null;
@@ -431,7 +431,7 @@ class EcoBiteApp extends StatefulWidget {
 
 class _EcoBiteAppState extends State<EcoBiteApp> {
   bool isDark = false;
-  final box = Hive.box('database');
+  final box = Hive.box(kBoxDatabase);
 
   @override
   void initState() {

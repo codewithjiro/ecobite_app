@@ -16,6 +16,7 @@ class Homepage extends StatefulWidget {
 class _HomepageState extends State<Homepage> {
   String _selectedCategory = 'All';
   late String _cachedGreeting;
+  int _lastGreetingHour = -1;
 
   // ── Search ──────────────────────────────────────────────────────
   final TextEditingController _searchController = TextEditingController();
@@ -82,8 +83,15 @@ class _HomepageState extends State<Homepage> {
     return name.isEmpty ? '$part! 👋' : '$part, $name! 👋';
   }
 
-  // Called from build — uses cache
-  String _greeting() => _cachedGreeting;
+  // Refreshes if the hour changed (morning → afternoon → evening)
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour != _lastGreetingHour) {
+      _cachedGreeting = _buildGreeting();
+      _lastGreetingHour = hour;
+    }
+    return _cachedGreeting;
+  }
 
   IconData _categoryIcon(String cat) {
     switch (cat) {

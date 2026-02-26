@@ -134,7 +134,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             SizedBox(height: 10),
             CupertinoActivityIndicator(radius: 15),
             SizedBox(height: 15),
-            Text('Securing Payment Gateway...',
+            Text('Creating payment invoice...',
                 style: TextStyle(fontSize: 14)),
           ],
         ),
@@ -232,6 +232,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 cart.selectedItems.map((e) => e.quantity).toList(),
             itemPrices:
                 cart.selectedItems.map((e) => e.foodItem.price).toList(),
+            itemAddons: cart.selectedItems.map((e) {
+              if (e.selectedAddons.isEmpty) return '';
+              return e.selectedAddons
+                  .map((a) => '${a.name}:${a.price}')
+                  .join(',');
+            }).toList(),
             totalAmount: cart.selectedTotal,
             status: 'Order Confirmed',
             timestamp: DateTime.now(),
